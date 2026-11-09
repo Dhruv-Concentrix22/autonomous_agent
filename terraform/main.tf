@@ -13,7 +13,13 @@ provider "google" {
   region  = var.region
 }
 
-# 1. Artifact Registry for Container Images
+# 1. Dedicated Service Account (Least Privilege Identity)
+resource "google_service_account" "agent_sa" {
+  account_id   = "ai-harness-sa"
+  display_name = "Dedicated Service Account for AI Agent Harness & Webhook"
+}
+
+# 2. Artifact Registry for Container Images
 resource "google_artifact_registry_repository" "harness_repo" {
   location      = var.region
   repository_id = "ai-harness-repo"
@@ -21,15 +27,11 @@ resource "google_artifact_registry_repository" "harness_repo" {
   format        = "DOCKER"
 }
 
-# 2. Secret Manager Secrets
+# 3. Secret Manager Secrets
 resource "google_secret_manager_secret" "gemini_api_key" {
   secret_id = "gemini-api-key"
   replication {
-    user_managed {
-      replicas {
-        location = var.region
-      }
-    }
+    auto {}
   }
 }
 
@@ -41,11 +43,7 @@ resource "google_secret_manager_secret_version" "gemini_api_key_version" {
 resource "google_secret_manager_secret" "github_token" {
   secret_id = "github-token"
   replication {
-    user_managed {
-      replicas {
-        location = var.region
-      }
-    }
+    auto {}
   }
 }
 
@@ -54,13 +52,15 @@ resource "google_secret_manager_secret_version" "github_token_version" {
   secret_data = var.github_token
 }
 
-# 3. Cloud Run Job (Agent Container Harness)
+# 4. Cloud Run Job (Agent Container Harness)
 resource "google_cloud_run_v2_job" "agent_job" {
   name     = "bug-hunt-agent-job"
   location = var.region
 
   template {
     template {
+      service_account = google_service_account.agent_sa.email
+
       containers {
         image = var.agent_job_image != "" ? var.agent_job_image : "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.harness_repo.repository_id}/agent-job:latest"
 
@@ -114,13 +114,15 @@ resource "google_cloud_run_v2_job" "agent_job" {
   }
 }
 
-# 4. Cloud Run Service (Webhook Receiver API)
+# 5. Cloud Run Service (Webhook Receiver API)
 resource "google_cloud_run_v2_service" "webhook_receiver" {
   name     = "webhook-receiver"
   location = var.region
   ingress  = "INGRESS_TRAFFIC_ALL"
 
   template {
+    service_account = google_service_account.agent_sa.email
+
     containers {
       image = var.webhook_service_image != "" ? var.webhook_service_image : "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.harness_repo.repository_id}/webhook-receiver:latest"
 
@@ -149,12 +151,4 @@ resource "google_cloud_run_v2_service" "webhook_receiver" {
       }
     }
   }
-}
-
-# 5. IAM - Allow Unauthenticated Access to Webhook Endpoint (For GitHub Webhooks)
-resource "google_cloud_run_v2_service_iam_member" "public_webhook" {
-  location = google_cloud_run_v2_service.webhook_receiver.location
-  name     = google_cloud_run_v2_service.webhook_receiver.name
-  role     = "roles/run.invoker"
-  member   = "allUsers"
 }
