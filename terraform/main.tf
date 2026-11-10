@@ -52,6 +52,19 @@ resource "google_secret_manager_secret_version" "github_token_version" {
   secret_data = var.github_token
 }
 
+# 3b. Grant Secret Accessor Role to Dedicated Service Account
+resource "google_secret_manager_secret_iam_member" "agent_sa_gemini_key_access" {
+  secret_id = google_secret_manager_secret.gemini_api_key.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.agent_sa.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "agent_sa_github_token_access" {
+  secret_id = google_secret_manager_secret.github_token.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.agent_sa.email}"
+}
+
 # 4. Cloud Run Job (Agent Container Harness)
 resource "google_cloud_run_v2_job" "agent_job" {
   name     = "bug-hunt-agent-job"
