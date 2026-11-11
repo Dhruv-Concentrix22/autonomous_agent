@@ -21,9 +21,6 @@ from tools import (
     git_commit,
     push_branch,
     get_git_status,
-    list_files,
-    read_file,
-    write_file,
     create_pull_request
 )
 
@@ -81,9 +78,9 @@ async def main():
         "Your goal is to fix the following GitHub issue:\n"
         f"ISSUE TITLE/DESCRIPTION:\n{issue_description}\n\n"
         "Instructions:\n"
-        "1. Explore the codebase using `list_files()` and `read_file(file_path)` to locate the bug.\n"
+        "1. Explore and read the codebase using built-in file tools (`view_file`, `list_dir`, `search_dir`) to locate the bug.\n"
         "2. Create a new git branch using `create_git_branch(branch_name)` (e.g. `fix/issue-XYZ`).\n"
-        "3. Edit files to fix the bug using `write_file(file_path, content)`.\n"
+        "3. Edit or create necessary files to fix the bug using built-in `edit_file` / `create_file` tools.\n"
         "4. Run unit tests to verify your fix using `run_test_suite()`.\n"
         "5. Check modified files using `get_git_status()`.\n"
         "6. Stage & commit your fix using `git_commit(message)`.\n"
@@ -101,9 +98,6 @@ async def main():
             git_commit,
             push_branch,
             get_git_status,
-            list_files,
-            read_file,
-            write_file,
             create_pull_request
         ],
         policies=[allow_all()]
