@@ -1,65 +1,46 @@
-# GitHub Webhook Receiver (Cloud Run Service)
+# Webhook Receiver (Cloud Run Service)
 
-Lightweight FastAPI service that receives GitHub issue webhooks and triggers long-running Cloud Run Agent Jobs.
+## Why does this exist?
+GitHub Webhooks require the receiving server to respond with a `200 OK` status within 10 seconds. However, an AI Agent's task (cloning a repo, analyzing code, testing, and pushing a PR) can take several minutes. 
 
-## 🚀 How it Works
+This component acts as an asynchronous dispatcher. It instantly acknowledges GitHub's webhook and triggers the long-running Agent Cloud Run Job in the background.
 
-1. GitHub fires a `POST /webhook` request when a user opens an issue.
-2. The Webhook Receiver parses the repository URL, issue number, title, and body.
-3. It immediately returns `200 OK` (so GitHub does not time out).
-4. In the background, it calls `google-cloud-run` SDK to execute the `bug-hunt-agent-job` Cloud Run Job, injecting environment variables for the agent.
+## What does it do?
+1. Listens for POST requests on the `/webhook` endpoint.
+2. Validates GitHub `issues.opened` events.
+3. Immediately returns a `200 OK` to GitHub.
+4. Asynchronously uses the Google Cloud Python SDK to dispatch the `bug-hunt-agent-job` Cloud Run Job, passing the GitHub repository URL, issue number, and description as environment variables.
 
----
+## Commands
 
-## 🧪 Local Testing
+### Local Testing
+To test locally, you need your GCP credentials active and a tunnel to receive GitHub webhooks.
 
-### Option 1: Run locally with Uvicorn
 ```bash
-cd webhook_receiver
+# 1. Authenticate with Google Cloud
+gcloud auth application-default login
+
+# 2. Install dependencies
 pip install -r requirements.txt
-python main.py
+
+# 3. Start the server (ensure MOCK_CLOUD_RUN=false in .env for real GCP execution)
+uvicorn main:app --host 0.0.0.0 --port 8080 --reload
+
+# 4. In a separate terminal, expose it to the internet
+npx localtunnel --port 8080
 ```
+*(Update your GitHub Webhook Payload URL to the generated localtunnel URL `https://<subdomain>.loca.lt/webhook`)*
 
-### Option 2: Test with mock payload via `curl`
-```bash
-curl -X POST http://localhost:8080/webhook \
-  -H "Content-Type: application/json" \
-  -H "X-GitHub-Event: issues" \
-  -d '{
-    "action": "opened",
-    "issue": {
-      "number": 12,
-      "title": "Fix calculate_totals discount bug",
-      "body": "The calculate_totals function subtracts flat discount percentage instead of percentage math."
-    },
-    "repository": {
-      "full_name": "my-user/my-repo",
-      "clone_url": "https://github.com/my-user/my-repo.git"
-    }
-  }'
-```
-
-Expected response:
-```json
-{
-  "status": "accepted",
-  "message": "Agent job dispatched for Issue #12",
-  "repository": "my-user/my-repo"
-}
-```
-
----
-
-## ☁️ Deployment to Google Cloud Run
+### Deployment
+To build and deploy to Google Cloud Run:
 
 ```bash
-# 1. Build & push image to GCP Artifact Registry
-gcloud builds submit --tag us-central1-docker.pkg.dev/YOUR_PROJECT_ID/harness-repo/webhook-receiver:latest .
+# Build the Docker image and push to Artifact Registry
+gcloud builds submit --tag <REGION>-docker.pkg.dev/<YOUR_PROJECT_ID>/ai-harness-repo/webhook-receiver:latest
 
-# 2. Deploy as a Cloud Run Service
+# Deploy to Cloud Run (Managed by Terraform, but manual update command below)
 gcloud run deploy webhook-receiver \
-  --image us-central1-docker.pkg.dev/YOUR_PROJECT_ID/harness-repo/webhook-receiver:latest \
-  --region us-central1 \
-  --allow-unauthenticated \
-  --set-env-vars GCP_PROJECT_ID="YOUR_PROJECT_ID",GCP_REGION="us-central1",CLOUD_RUN_JOB_NAME="bug-hunt-agent-job",MOCK_CLOUD_RUN="false"
+  --image <REGION>-docker.pkg.dev/<YOUR_PROJECT_ID>/ai-harness-repo/webhook-receiver:latest \
+  --region <REGION> \
+  --allow-unauthenticated
 ```

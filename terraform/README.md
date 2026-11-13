@@ -1,66 +1,41 @@
-# Infrastructure as Code (Terraform for Cloud MVP)
+# Terraform Infrastructure (IaC)
 
-This directory contains Terraform scripts to automate the deployment of the Cloud MVP on Google Cloud Platform (GCP).
+## Why does this exist?
+Deploying an event-driven microservice architecture manually via the GCP console is prone to human error, hard to replicate, and difficult to manage securely. 
 
-## 🛠️ Resources Created
+This Terraform module exists to codify the entire Google Cloud Platform setup—ensuring least-privilege IAM roles, secure secret injection, and reproducible deployments across development and production environments.
 
-1. **Artifact Registry (`ai-harness-repo`):** Docker registry for hosting the Agent and Webhook images.
-2. **Secret Manager (`gemini-api-key`, `github-token`):** Secure storage for API keys and tokens.
-3. **Cloud Run Job (`bug-hunt-agent-job`):** Containerized execution job for running the Antigravity agent (2 CPU, 4GB RAM, 10 min timeout).
-4. **Cloud Run Service (`webhook-receiver`):** Public HTTPS endpoint for receiving GitHub Webhook events.
-5. **IAM Bindings (`allUsers` invoker):** Grants unauthenticated access to `/webhook` so GitHub can deliver payloads.
+## What does it do?
+The module provisions and configures the following resources:
+1. **Service Account:** A dedicated, least-privilege identity (`ai-harness-sa`) for the Cloud Run resources.
+2. **Artifact Registry:** A Docker repository (`ai-harness-repo`) to store the built container images.
+3. **Secret Manager:** Secure storage for `gemini-api-key` and `github-token`.
+4. **IAM Policy Bindings:** Explicit, resource-level `roles/secretmanager.secretAccessor` permissions so the service account can read secrets at runtime (avoiding strict organization policy 403 errors).
+5. **Cloud Run Job:** The Agent execution template (`bug-hunt-agent-job`).
+6. **Cloud Run Service:** The public-facing HTTP FastAPI listener (`webhook-receiver`).
 
----
+##  Commands
 
-## 🚀 Execution Guide
-
-### Step 1: Create your `terraform.tfvars` file
-Copy the template and fill in your GCP Project ID and secret keys:
-```bash
-cp terraform.tfvars.example terraform.tfvars
-```
-
-Edit `terraform.tfvars`:
+### Initial Setup
+Ensure you have initialized your `terraform.tfvars` file with your specific values:
 ```hcl
-project_id     = "my-gcp-lab-project"
+project_id     = "<YOUR_GCP_PROJECT_ID>"
 region         = "us-central1"
-gemini_api_key = "AIzaSy..."
-github_token   = "ghp_..."
+gemini_api_key = "<YOUR_GEMINI_KEY>"
+github_token   = "<YOUR_GITHUB_TOKEN>"
 ```
 
-### Step 2: Build and Push Docker Images
-Before applying Terraform, build and push your Docker images to Artifact Registry:
-
+### Execution
 ```bash
-# Authenticate Docker with GCP Artifact Registry
-gcloud auth configure-docker us-central1-docker.pkg.dev
-
-# 1. Agent Job Image
-cd ../docker_harness_project
-docker build -t us-central1-docker.pkg.dev/YOUR_PROJECT_ID/ai-harness-repo/agent-job:latest .
-docker push us-central1-docker.pkg.dev/YOUR_PROJECT_ID/ai-harness-repo/agent-job:latest
-
-# 2. Webhook Receiver Image
-cd ../webhook_receiver
-docker build -t us-central1-docker.pkg.dev/YOUR_PROJECT_ID/ai-harness-repo/webhook-receiver:latest .
-docker push us-central1-docker.pkg.dev/YOUR_PROJECT_ID/ai-harness-repo/webhook-receiver:latest
-```
-
-### Step 3: Initialize and Apply Terraform
-```bash
-cd ../terraform
+# 1. Initialize Terraform (Downloads provider plugins)
 terraform init
-terraform plan
-terraform apply
-```
 
-### Step 4: Configure GitHub Webhook
-After `terraform apply` finishes, note the output URL:
-```text
-webhook_receiver_url = "https://webhook-receiver-xyz.a.run.app/webhook"
+# 2. Preview the infrastructure changes
+terraform plan
+
+# 3. Apply the changes to Google Cloud
+terraform apply -auto-approve
+
+# 4. (Optional) Destroy infrastructure if shutting down the project
+terraform destroy
 ```
-Go to your GitHub repository -> **Settings** -> **Webhooks** -> **Add Webhook**:
-- **Payload URL:** Paste the `webhook_receiver_url`.
-- **Content type:** `application/json`
-- **Which events:** Select **Let me select individual events** -> check **Issues**.
-- Click **Add webhook**.
